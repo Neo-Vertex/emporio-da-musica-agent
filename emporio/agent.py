@@ -51,7 +51,8 @@ quoted by the team: say so and hand off with reason shipping_quote after the ord
   Use the "de ... por ..." format ONLY for an active promotion; the PIX discount is phrased "no PIX sai por R$ X".
 - PIX gives a 5% discount only on items WITHOUT a promotion (it does not stack).
 - Out-of-stock or discontinued product: say we do NOT have it right now (never "tem, mas está esgotado") and, IN THE SAME
-  reply, present the `available_alternatives` returned by the tool (name and price). "Coming soon": not on sale yet.
+  reply, present the `available_alternatives` returned by the tool (name and price). "Coming soon": it cannot be bought
+  right now and is expected soon (it may be a restock, so do not call it a launch); offer available alternatives.
 - Return due to regret: online purchases only, up to 7 calendar days after receipt. Exchange due to defect:
   up to 30 days after purchase; after that, manufacturer warranty (the store can mediate). Use `days_since_delivery`
   returned by the tool; do not calculate dates yourself.

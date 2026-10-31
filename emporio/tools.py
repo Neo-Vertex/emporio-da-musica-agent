@@ -37,7 +37,9 @@ ORDER_ITEMS = _load("order_items")
 ACTIVE_PROMOS = {p["product_id"]: p for p in _load("promotions") if p["is_active"] == "1"}
 PRODUCT_BY_ID = {p["product_id"]: p for p in PRODUCTS}
 
-AVAILABILITY = {"discontinued": "discontinued", "coming_soon": "coming soon (not on sale yet)"}
+# "coming_soon" is read as "temporarily unavailable, expected soon": product 130 was sold normally before
+# (orders 3 and 14), so it is more likely a restock than a launch
+AVAILABILITY = {"discontinued": "discontinued", "coming_soon": "coming soon (unavailable right now, expected back soon)"}
 ORDER_STATUS = {
     "pending": "awaiting payment confirmation",
     "confirmed": "payment confirmed, being prepared",
