@@ -149,4 +149,6 @@ I built this project with the help of **Claude (Anthropic)**, used throughout th
 4. **Verify.** The test conversations were reviewed one by one, and that review found errors such as the wrong installment count; each one was fixed and re-tested. I then decided to add an automated eval, which caught a real bug on its first run (the agent answering a math question).
 5. **Think about the evaluator.** I added the web page so the agent can be tested without a terminal (the CLI is still there for whoever prefers it), the EN/PT toggle, and the live demo.
 
+**A note on the commit history.** Commits 1–9 are the original first version, with messages in Portuguese, and I apologize for that: I had missed that HR's email asked for everything in English. When I noticed, commit 10 rebuilt the whole project in English (code, comments, prompt, examples). That first version is also where the early test fixes appear, for example the installment tool added in commit 6, after the agent and the CLI were already working. From commit 10 on, everything is in English and each change appears in the history when it happened.
+
 This let me deliver a working, tested agent while focusing on the decisions, which is the part I can explain and defend.
