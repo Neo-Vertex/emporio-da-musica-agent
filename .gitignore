@@ -1,0 +1,6 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+logs/
+desafio_tecnico_ai_eng_artefact.pdf
