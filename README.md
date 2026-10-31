@@ -102,9 +102,9 @@ examples/           5 example conversations
 | 21 of 25 promotions are inactive | Only the 4 active ones are used, so Lia never offers an expired discount (manual §7.3). |
 | Product 136 is discontinued but has 13 units in stock | Status wins over stock: Lia says it is discontinued and `create_order` refuses to sell it. |
 | Product 130 is "coming soon" but was sold before (order 3, delivered) and has a pending order (14) | Read as a **restock**, not a launch: it cannot be bought right now, Lia says it is expected back soon and offers alternatives. This also explains the pending order (waiting for the item). Past orders are shown normally. |
-| Totals of orders 3 (R$3,450 vs R$3,498) and 20 (R$1,400 vs R$1,488) differ from the sum of their items | Lia reports the recorded total (what the customer paid) and never recalculates it; likely a discount missing from the data. |
+| Totals of orders 3 (R$3,450 vs R$3,498) and 20 (R$1,400 vs R$1,488) differ from the sum of their items at today's prices | Lia reports the total recorded in the order and never recalculates it. An order keeps the price of the day it was placed, while the catalog has today's price, so the difference is most likely a later price change (or an unrecorded discount). Order 20 was also cancelled. |
 | 3 categories have no products (woodwinds, brass, orchestral strings), although the manual says the store sells them | The search returns nothing and Lia says there are no options right now, without inventing products or denying that the store works with them. |
-| Some products have more than one promotion record | No product has two *active* promotions, and only active ones count, so there is no conflict. |
+| Some products have more than one promotion record | Only active ones count, and today no product has two. If one ever does, the code keeps the biggest discount (promotions do not stack, manual §6.2). |
 
 ## Testing
 
