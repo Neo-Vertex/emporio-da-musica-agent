@@ -163,6 +163,68 @@ def get_order_status(order_id, email_or_phone):
     }
 
 
+PAYMENT_METHODS = {"pix": "PIX", "debit": "Debit card", "credit": "Credit card", "boleto": "Boleto"}
+
+
+def create_order(items, payment_method, customer_name, phone, street, number, district, city, cep,
+                 installments=1, confirmed=False):
+    """confirmed=False returns a quote (nothing saved); confirmed=True saves the order and returns the receipt."""
+    if payment_method not in PAYMENT_METHODS:
+        return {"error": f"Payment method must be one of {list(PAYMENT_METHODS)}."}
+    lines, list_total, total = [], 0.0, 0.0
+    for item in items:
+        p = PRODUCT_BY_ID.get(str(item.get("product_id")))
+        qty = int(item.get("quantity", 1))
+        if not p:
+            return {"error": f"Product {item.get('product_id')} not found. Use search_products to get the id."}
+        if not _in_stock(p) or int(p["stock_quantity"]) < qty:
+            return {"error": f"{p['name']} is not available in this quantity ({_availability(p)})."}
+        view = _product_view(p)
+        promo = view.get("active_promotion")
+        unit = view["pix_price"] if payment_method == "pix" else (promo["promo_price"] if promo else view["list_price"])
+        note = (f"{promo['name']} -{promo['discount_percent']}%" if promo
+                else "PIX -5%" if payment_method == "pix" else None)
+        lines.append({"product": p["name"], "quantity": qty, "unit_price": unit,
+                      "line_total": round(unit * qty, 2), "discount": note})
+        list_total += view["list_price"] * qty
+        total += unit * qty
+    if not lines:
+        return {"error": "The order has no items."}
+    # §5.1: Campo Grande: free shipping from R$500, otherwise R$35, 1-3 business days by motoboy.
+    # ponytail: only the city of Campo Grande counts as metro area; other cities need a quote from the team (§5.2)
+    if _norm(city) == "campogrande":
+        shipping, delivery = (0.0 if total >= 500 else 35.0), "1 to 3 business days (store motoboy)"
+    else:
+        shipping, delivery = None, "shipping cost and time quoted by the team (PAC/SEDEX/Jadlog) based on the CEP"
+    grand_total = round(total + (shipping or 0), 2)
+    installments = int(installments or 1) if payment_method == "credit" else 1
+    if installments > max_installments(grand_total):
+        return {"error": f"Max interest-free installments for R$ {grand_total:.2f} is {max_installments(grand_total)}x."}
+    order = {
+        "status": "confirmed" if confirmed else "quote (not saved yet: confirm with the customer)",
+        "customer": {"name": customer_name, "phone": phone},
+        "delivery_address": f"{street}, {number} - {district}, {city} - CEP {cep}",
+        "items": lines,
+        "list_price_total": round(list_total, 2),
+        "discounts": round(list_total - total, 2),
+        "shipping": shipping if shipping is not None else "to be quoted",
+        "total": grand_total,
+        "payment": {"method": PAYMENT_METHODS[payment_method], "installments": installments,
+                    "installment_value": round(grand_total / installments, 2)},
+        "estimated_delivery": delivery,
+    }
+    if not confirmed:
+        return order
+    # ponytail: JSONL file plays the CRM; stock is not decremented (read-only CSVs)
+    LOGS.mkdir(exist_ok=True)
+    path = LOGS / "orders_crm.jsonl"
+    count = sum(1 for _ in open(path, encoding="utf-8")) if path.exists() else 0
+    order = {"order_id": f"WEB-{count + 1:04d}", "created_at": datetime.now(TZ).isoformat(timespec="seconds")} | order
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(order, ensure_ascii=False) + "\n")
+    return order
+
+
 def handoff_to_human(reason, summary, customer_contact=None):
     # ponytail: a JSONL file stands in for the ticket queue; in production this would be a CRM/helpdesk ticket
     LOGS.mkdir(exist_ok=True)
@@ -173,7 +235,8 @@ def handoff_to_human(reason, summary, customer_contact=None):
     return {"ok": True, "response_time": "within 24 business hours"}
 
 
-TOOLS = {f.__name__: f for f in (search_products, simulate_installments, get_order_status, handoff_to_human)}
+TOOLS = {f.__name__: f for f in (search_products, simulate_installments, get_order_status, create_order,
+                                  handoff_to_human)}
 
 SCHEMAS = [
     {"type": "function", "function": {
@@ -201,6 +264,29 @@ SCHEMAS = [
             "email_or_phone": {"type": "string"},
         }}}},
     {"type": "function", "function": {
+        "name": "create_order",
+        "description": "Places a purchase order with delivery. First call with confirmed=false to get a quote (totals, "
+                       "shipping, installments), show the summary to the customer and ask for explicit confirmation; only "
+                       "then call again with confirmed=true. Use product ids from search_products.",
+        "parameters": {"type": "object",
+                       "required": ["items", "payment_method", "customer_name", "phone", "street", "number",
+                                    "district", "city", "cep", "confirmed"],
+                       "properties": {
+                           "items": {"type": "array", "items": {"type": "object", "required": ["product_id", "quantity"],
+                                                                "properties": {"product_id": {"type": "integer"},
+                                                                               "quantity": {"type": "integer"}}}},
+                           "payment_method": {"type": "string", "enum": list(PAYMENT_METHODS)},
+                           "installments": {"type": "integer", "description": "Only for credit card."},
+                           "customer_name": {"type": "string"},
+                           "phone": {"type": "string"},
+                           "street": {"type": "string"},
+                           "number": {"type": "string"},
+                           "district": {"type": "string"},
+                           "city": {"type": "string"},
+                           "cep": {"type": "string"},
+                           "confirmed": {"type": "boolean"},
+                       }}}},
+    {"type": "function", "function": {
         "name": "handoff_to_human",
         "description": "Hands the case over to the human team: complaint, return/exchange to be formalized, late order, "
                        "special shipping quote or anything the agent cannot solve.",
@@ -222,6 +308,13 @@ if __name__ == "__main__":  # self-check: python -m emporio.tools
     assert len(search_products("Giannini GF-3D")["available_alternatives"]) == 3  # out of stock -> 3 suggestions
     guitars = search_products(category="Violões", max_price=1000)["products"]
     assert guitars and all(g["list_price"] <= 1000 for g in guitars)
+    addr = dict(customer_name="Teste", phone="67999999999", street="Rua A", number="1", district="Centro", cep="79000-000")
+    quote = create_order([{"product_id": 95, "quantity": 1}], "pix", city="Campo Grande", **addr)
+    assert quote["total"] == 2089.05 and quote["shipping"] == 0 and "order_id" not in quote  # quote is not saved
+    cheap = create_order([{"product_id": 119, "quantity": 1}], "credit", city="Campo Grande", installments=3, **addr)
+    assert cheap["shipping"] == 35 and cheap["total"] == 194.9 and cheap["payment"]["installments"] == 3
+    assert "error" in create_order([{"product_id": 96, "quantity": 1}], "pix", city="Campo Grande", **addr)  # 0 stock
+    assert create_order([{"product_id": 95, "quantity": 1}], "pix", city="Dourados", **addr)["shipping"] == "to be quoted"
     assert get_order_status("8", "someone@else.com") == get_order_status("999", "someone@else.com")
     assert get_order_status("8", "anacarol.ferreira@coldmail.com")["status"] == "shipped"
     assert get_order_status("8", "(67) 99654-7821")["tracking_code"] == "BRJL5544332BR"
