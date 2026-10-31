@@ -104,12 +104,28 @@ def buscar_produtos(termo=None, categoria=None, preco_min=None, preco_max=None, 
         if somente_promocao and p["product_id"] not in ACTIVE_PROMOS:
             continue
         found.append(p)
+    in_stock = lambda p: _availability(p).startswith("em estoque")  # noqa: E731
     # disponíveis primeiro, depois por preço
-    found.sort(key=lambda p: (not _availability(p).startswith("em estoque"), float(p["price_brl"])))
-    return {"total_encontrado": len(found), "produtos": [_product_view(p) for p in found[:20]]}
+    found.sort(key=lambda p: (not in_stock(p), float(p["price_brl"])))
+    result = {"total_encontrado": len(found), "produtos": [_product_view(p) for p in found[:20]]}
+    # §7.3: produto indisponível -> já devolve alternativas (só pedir no prompt não foi suficiente nos testes)
+    if found and words and not any(in_stock(p) for p in found):
+        ref = found[0]
+        price = float(ref["price_brl"])
+        similar = sorted((p for p in PRODUCTS if p["category_id"] == ref["category_id"] and in_stock(p)),
+                         key=lambda p: abs(float(p["price_brl"]) - price))
+        result["alternativas_disponiveis"] = [_product_view(p) for p in similar[:3]]
+    return result
+
+
+def simular_parcelamento(valor):
+    n = max_installments(valor)
+    return {"valor": valor, "max_parcelas_sem_juros": n, "valor_parcela": round(valor / n, 2)}
 
 
 def consultar_pedido(numero_pedido, email_ou_telefone):
+    if not email_ou_telefone.strip():
+        return {"erro": "Peça ao cliente o e-mail ou telefone do cadastro antes de consultar."}
     order = ORDERS.get(str(numero_pedido).strip().lstrip("#"))
     if not order:
         return {"erro": "Pedido não encontrado."}
@@ -154,7 +170,7 @@ def encaminhar_atendente(motivo, resumo, contato_cliente=None):
     return {"ok": True, "prazo_retorno": "até 24 horas úteis"}
 
 
-TOOLS = {f.__name__: f for f in (buscar_produtos, consultar_pedido, encaminhar_atendente)}
+TOOLS = {f.__name__: f for f in (buscar_produtos, simular_parcelamento, consultar_pedido, encaminhar_atendente)}
 
 SCHEMAS = [
     {"type": "function", "function": {
@@ -168,6 +184,11 @@ SCHEMAS = [
             "preco_max": {"type": "number"},
             "somente_promocao": {"type": "boolean", "description": "true para listar só itens com promoção ativa"},
         }}}},
+    {"type": "function", "function": {
+        "name": "simular_parcelamento",
+        "description": "Calcula em quantas vezes sem juros um valor pode ser parcelado no cartão (regras de parcela mínima "
+                       "do manual). Use SEMPRE que o cliente perguntar sobre parcelas de um valor; nunca calcule de cabeça.",
+        "parameters": {"type": "object", "required": ["valor"], "properties": {"valor": {"type": "number"}}}}},
     {"type": "function", "function": {
         "name": "consultar_pedido",
         "description": "Consulta status, itens e rastreio de um pedido. Exige o número do pedido E o e-mail ou telefone "
@@ -190,10 +211,12 @@ SCHEMAS = [
 
 if __name__ == "__main__":  # auto-checagem: python -m emporio.tools
     assert max_installments(2199) == 12 and max_installments(400) == 5 and max_installments(120) == 2
+    assert simular_parcelamento(600)["max_parcelas_sem_juros"] == 6  # erro real do LLM: tinha respondido 12x
     gd20 = buscar_produtos("takamine gd20")["produtos"][0]
     assert gd20["preco_tabela"] == 2199 and "promocao_ativa" not in gd20 and gd20["preco_pix"] == 2089.05
     crafter = buscar_produtos("crafter ht-100")["produtos"][0]  # promo ativa 18%: PIX não acumula
     assert crafter["promocao_ativa"]["preco_promocional"] == crafter["preco_pix"] == 1967.18
+    assert len(buscar_produtos("Giannini GF-3D")["alternativas_disponiveis"]) == 3  # esgotado -> sugere 3
     violoes = buscar_produtos(categoria="Violões", preco_max=1000)["produtos"]
     assert violoes and all(v["preco_tabela"] <= 1000 for v in violoes)
     assert "erro" in consultar_pedido("8", "outra@pessoa.com")
