@@ -126,16 +126,17 @@ def simular_parcelamento(valor):
 def consultar_pedido(numero_pedido, email_ou_telefone):
     if not email_ou_telefone.strip():
         return {"erro": "Peça ao cliente o e-mail ou telefone do cadastro antes de consultar."}
+    # LGPD: pedido inexistente e dado errado dão a MESMA resposta, para não revelar quais pedidos existem
+    denied = {"erro": "Não encontramos um pedido com esse número para esse e-mail/telefone."}
     order = ORDERS.get(str(numero_pedido).strip().lstrip("#"))
     if not order:
-        return {"erro": "Pedido não encontrado."}
+        return denied
     customer = CUSTOMERS[order["customer_id"]]
     given = _norm(email_ou_telefone)
     digits = re.sub(r"\D", "", email_ou_telefone)
     phone_ok = len(digits) >= 8 and re.sub(r"\D", "", customer["phone"]).endswith(digits[-8:])
     if given != _norm(customer["email"]) and not phone_ok:
-        # LGPD: não revela nada (nem se o pedido existe para outra pessoa)
-        return {"erro": "Não foi possível confirmar a identidade. E-mail ou telefone não confere com o pedido."}
+        return denied
     items = [{"produto": PRODUCT_BY_ID[i["product_id"]]["name"], "quantidade": int(i["quantity"])}
              for i in ORDER_ITEMS if i["order_id"] == order["order_id"]]
     extra = {}
@@ -219,7 +220,7 @@ if __name__ == "__main__":  # auto-checagem: python -m emporio.tools
     assert len(buscar_produtos("Giannini GF-3D")["alternativas_disponiveis"]) == 3  # esgotado -> sugere 3
     violoes = buscar_produtos(categoria="Violões", preco_max=1000)["produtos"]
     assert violoes and all(v["preco_tabela"] <= 1000 for v in violoes)
-    assert "erro" in consultar_pedido("8", "outra@pessoa.com")
+    assert consultar_pedido("8", "outra@pessoa.com") == consultar_pedido("999", "outra@pessoa.com")
     assert consultar_pedido("8", "anacarol.ferreira@coldmail.com")["status"] == "enviado"
     assert consultar_pedido("8", "(67) 99654-7821")["codigo_rastreio"] == "BRJL5544332BR"
     print("ok")
