@@ -113,6 +113,13 @@ def search_products(query=None, category=None, min_price=None, max_price=None, p
         found.append(p)
     found.sort(key=lambda p: (not _in_stock(p), float(p["price_brl"])))  # available first, then by price
     result = {"total_found": len(found), "products": [_product_view(p) for p in found[:20]]}
+    if not found:
+        # 3 categories (woodwinds, brass, orchestral strings) have no products at all: say so explicitly,
+        # otherwise the model offers "similar items in stock" that do not exist
+        empty_cat = category and not any(p["category_id"] in cat_ids for p in PRODUCTS)
+        result["note"] = ("This category has no products in the catalog right now. Do not offer alternatives from it; "
+                          "offer to hand off to the team instead." if empty_cat else
+                          "No product matches. Do not invent products; suggest a broader search or hand off to the team.")
     # §7.3: when the requested item is unavailable, return alternatives right away
     # (asking for this only in the prompt was not enough during testing)
     if found and words and not any(_in_stock(p) for p in found):
