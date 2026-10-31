@@ -4,8 +4,15 @@ import csv
 import json
 import re
 import unicodedata
-from datetime import datetime
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+
+# Campo Grande/MS = UTC-4 o ano todo (sem horário de verão desde 2019); evita depender de tzdata no Windows
+TZ = timezone(timedelta(hours=-4))
+
+
+def today():
+    return datetime.now(TZ).date()
 
 DATA = Path(__file__).resolve().parent.parent / "data"
 LOGS = Path(__file__).resolve().parent.parent / "logs"
@@ -115,7 +122,15 @@ def consultar_pedido(numero_pedido, email_ou_telefone):
         return {"erro": "Não foi possível confirmar a identidade. E-mail ou telefone não confere com o pedido."}
     items = [{"produto": PRODUCT_BY_ID[i["product_id"]]["name"], "quantidade": int(i["quantity"])}
              for i in ORDER_ITEMS if i["order_id"] == order["order_id"]]
-    return {
+    extra = {}
+    if order["estimated_delivery"]:
+        days = (today() - date.fromisoformat(order["estimated_delivery"])).days
+        if order["status"] == "delivered":
+            # não há data real de entrega nos dados: usamos a previsão como data de recebimento
+            extra["dias_desde_entrega"] = days
+        elif days > 0:
+            extra["dias_de_atraso"] = days
+    return extra | {
         "pedido": int(order["order_id"]),
         "cliente_primeiro_nome": customer["name"].split()[0],
         "data_pedido": order["order_date"],
@@ -132,7 +147,7 @@ def consultar_pedido(numero_pedido, email_ou_telefone):
 def encaminhar_atendente(motivo, resumo, contato_cliente=None):
     # ponytail: arquivo JSONL faz o papel de fila; em produção seria um ticket no CRM/helpdesk
     LOGS.mkdir(exist_ok=True)
-    ticket = {"quando": datetime.now().isoformat(timespec="seconds"), "motivo": motivo,
+    ticket = {"quando": datetime.now(TZ).isoformat(timespec="seconds"), "motivo": motivo,
               "resumo": resumo, "contato": contato_cliente}
     with open(LOGS / "encaminhamentos.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(ticket, ensure_ascii=False) + "\n")
