@@ -19,7 +19,7 @@ POLICIES = "\n".join(page.extract_text() for page in PdfReader(DATA / "política
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 SYSTEM_PROMPT = """You are Lia, the virtual assistant of Empório da Música, a musical instrument store in Campo Grande/MS, Brazil.
-Customers are Brazilian: ALWAYS reply in Brazilian Portuguese.
+Customers are Brazilian: reply in Brazilian Portuguese, unless the current-time message says the interface is in English.
 
 # Tone
 Informal but professional, like a friend who knows music. Short, WhatsApp-style messages:
@@ -74,38 +74,55 @@ quoted by the team: say so and hand off with reason shipping_quote after the ord
 """ + POLICIES
 
 
-def now_message():
+def now_message(lang="pt"):
     # separate message placed after the fixed prefix: the large prompt never changes, so OpenAI can cache it
     now = datetime.now(TZ)
-    return {"role": "system", "content": f"Current time in Campo Grande: {now:%Y-%m-%d %H:%M} ({WEEKDAYS[now.weekday()]})."}
+    text = f"Current time in Campo Grande: {now:%Y-%m-%d %H:%M} ({WEEKDAYS[now.weekday()]})."
+    if lang == "en":
+        text += " The interface is in English: reply in English (keep prices in R$ and product names as they are)."
+    return {"role": "system", "content": text}
 
 
-# Plain-language description of what each tool does in code (shown in the web "neuron" panel)
+# Plain-language description of what each tool does in code (shown in the web "neuron" panel), EN / PT
 TOOL_EXPLAIN = {
-    "search_products": "filters products.csv (accent/case-insensitive), applies the active promotion and computes the "
-                       "PIX price and max installments in code",
-    "simulate_installments": "tries 12x down to 1x and returns the first count that respects the manual's minimum installment",
-    "get_order_status": "checks order number + email/phone against customers.csv before returning anything (LGPD)",
-    "create_order": "validates stock and computes prices, discounts, shipping and installments; confirmed=false only "
-                    "quotes, confirmed=true saves to the CRM (logs/orders_crm.jsonl)",
-    "handoff_to_human": "writes a ticket to logs/handoffs.jsonl for the human team",
+    "search_products": ("filters products.csv (accent/case-insensitive), applies the active promotion and computes the "
+                        "PIX price and max installments in code",
+                        "filtra o products.csv (ignorando acento e maiúscula), aplica a promoção ativa e calcula no código "
+                        "o preço no PIX e o máximo de parcelas"),
+    "simulate_installments": ("tries 12x down to 1x and returns the first count that respects the manual's minimum installment",
+                              "testa de 12x até 1x e devolve a primeira quantidade que respeita a parcela mínima do manual"),
+    "get_order_status": ("checks order number + email/phone against customers.csv before returning anything (LGPD)",
+                         "confere número do pedido + e-mail/telefone no customers.csv antes de devolver qualquer dado (LGPD)"),
+    "create_order": ("validates stock and computes prices, discounts, shipping and installments; confirmed=false only "
+                     "quotes, confirmed=true saves to the CRM (logs/orders_crm.jsonl)",
+                     "valida o estoque e calcula preços, descontos, frete e parcelas; confirmed=false só orça, "
+                     "confirmed=true grava no CRM (logs/orders_crm.jsonl)"),
+    "handoff_to_human": ("writes a ticket to logs/handoffs.jsonl for the human team",
+                         "grava um chamado em logs/handoffs.jsonl para a equipe humana"),
 }
 PROMPT_TOKENS = len(SYSTEM_PROMPT) // 4  # rough estimate: ~4 characters per token
 
 
-def summarize(tool, result):
+def summarize(tool, result, t):
     if "error" in result:
-        return f"returned an error: {result['error']}"
+        return t(f"returned an error: {result['error']}", f"devolveu um erro: {result['error']}")
     if tool == "search_products":
-        alt = f", plus {len(result['available_alternatives'])} available alternatives" if "available_alternatives" in result else ""
-        return f"{result['total_found']} product(s) found{alt}"
+        n_alt = len(result.get("available_alternatives", []))
+        return t(f"{result['total_found']} product(s) found" + (f", plus {n_alt} available alternatives" if n_alt else ""),
+                 f"{result['total_found']} produto(s) encontrado(s)" + (f", mais {n_alt} alternativas disponíveis" if n_alt else ""))
     if tool == "simulate_installments":
-        return f"up to {result['max_interest_free_installments']}x of R$ {result['installment_value']:.2f}"
+        n, v = result["max_interest_free_installments"], result["installment_value"]
+        return t(f"up to {n}x of R$ {v:.2f}", f"até {n}x de R$ {v:.2f}")
     if tool == "get_order_status":
-        return f"identity confirmed; order {result['order_id']} is '{result['status']}'"
+        return t(f"identity confirmed; order {result['order_id']} is '{result['status']}'",
+                 f"identidade confirmada; pedido {result['order_id']} está '{result['status']}'")
     if tool == "create_order":
-        return f"{'ORDER SAVED ' + result['order_id'] if 'order_id' in result else 'quote only (not saved)'}; total R$ {result['total']:.2f}"
-    return "ticket created for the human team"
+        if "order_id" in result:
+            return t(f"ORDER SAVED {result['order_id']}; total R$ {result['total']:.2f}",
+                     f"PEDIDO GRAVADO {result['order_id']}; total R$ {result['total']:.2f}")
+        return t(f"quote only (not saved); total R$ {result['total']:.2f}",
+                 f"só orçamento (não gravado); total R$ {result['total']:.2f}")
+    return t("ticket created for the human team", "chamado criado para a equipe humana")
 
 
 class Agent:
@@ -124,47 +141,63 @@ class Agent:
             elif event["type"] == "answer":
                 return event["text"], called
 
-    def stream(self, user_message):
-        """Runs one turn and yields each step as an event, so the web page can show the agent "thinking"."""
+    def stream(self, user_message, lang="pt"):
+        """Runs one turn and yields each step as an event, so the web page can show the agent "thinking".
+        lang ("pt" or "en") sets the reply language and the language of the step explanations."""
+        def t(en, pt):
+            return en if lang == "en" else pt
+
         self.history.append({"role": "user", "content": user_message})
-        yield {"type": "received", "explain": f"Message added to the conversation history ({len(self.history)} "
-                                              f"messages). agent.py → Agent.stream()"}
+        n = len(self.history)
+        yield {"type": "received", "explain": t(f"Message added to the conversation history ({n} messages). agent.py → Agent.stream()",
+                                                f"Mensagem adicionada ao histórico da conversa ({n} mensagens). agent.py → Agent.stream()")}
         used_tools = False
         for round_ in range(1, MAX_TOOL_ROUNDS + 1):
-            yield {"type": "llm_call", "explain": f"Call #{round_} to {MODEL}: system prompt (persona + rules + full "
-                                                  f"manual, ~{PROMPT_TOKENS:,} tokens) + current time + "
-                                                  f"{len(self.history)} history messages + {len(SCHEMAS)} tool definitions."}
+            n = len(self.history)
+            yield {"type": "llm_call", "explain": t(
+                f"Call #{round_} to {MODEL}: system prompt (persona + rules + full manual, ~{PROMPT_TOKENS:,} tokens) "
+                f"+ current time + {n} history messages + {len(SCHEMAS)} tool definitions.",
+                f"Chamada #{round_} ao {MODEL}: prompt (persona + regras + manual inteiro, ~{PROMPT_TOKENS:,} tokens) "
+                f"+ hora atual + {n} mensagens do histórico + {len(SCHEMAS)} ferramentas disponíveis.")}
             response = self.client.chat.completions.create(
                 model=MODEL, tools=SCHEMAS,
-                messages=[{"role": "system", "content": SYSTEM_PROMPT}, now_message()] + self.history,
+                messages=[{"role": "system", "content": SYSTEM_PROMPT}, now_message(lang)] + self.history,
             )
             usage = response.usage
             cached = getattr(usage.prompt_tokens_details, "cached_tokens", 0) or 0
             msg = response.choices[0].message
             self.history.append(msg.model_dump(exclude_none=True))
-            tokens = f"Read {usage.prompt_tokens:,} tokens ({cached:,} from OpenAI's prompt cache), wrote {usage.completion_tokens:,}."
+            tokens = t(f"Read {usage.prompt_tokens:,} tokens ({cached:,} from OpenAI's prompt cache), wrote {usage.completion_tokens:,}.",
+                       f"Leu {usage.prompt_tokens:,} tokens ({cached:,} vindos do cache de prompt da OpenAI), escreveu {usage.completion_tokens:,}.")
             if not msg.tool_calls:
-                source = ("It used the tool results above to write the answer." if used_tools else
-                          "No data lookup needed: answered from the store manual that is already in the prompt.")
-                yield {"type": "decision", "explain": f"The model decided to answer. {source} {tokens}"}
+                source = (t("It used the tool results above to write the answer.",
+                            "Usou os resultados das ferramentas acima para escrever a resposta.") if used_tools else
+                          t("No data lookup needed: answered from the store manual that is already in the prompt.",
+                            "Não precisou consultar dados: respondeu pelo manual da loja, que já está no prompt."))
+                yield {"type": "decision", "explain": t("The model decided to answer.", "O modelo decidiu responder.") + f" {source} {tokens}"}
                 yield {"type": "answer", "text": msg.content}
                 return
             names = ", ".join(c.function.name for c in msg.tool_calls)
-            yield {"type": "decision", "explain": f"The model decided it needs data and asked for: {names}. "
-                                                  f"Following the routing rules in the prompt. {tokens}"}
+            yield {"type": "decision", "explain": t(
+                f"The model decided it needs data and asked for: {names}. Following the routing rules in the prompt. {tokens}",
+                f"O modelo decidiu que precisa de dados e pediu: {names}. Seguindo as regras de roteamento do prompt. {tokens}")}
             used_tools = True
             for call in msg.tool_calls:
+                name = call.function.name
                 args = json.loads(call.function.arguments or "{}")
-                yield {"type": "tool_call", "tool": call.function.name, "arguments": args,
-                       "explain": f"Python runs tools.py → {call.function.name}(): {TOOL_EXPLAIN.get(call.function.name, '')}."}
+                what = TOOL_EXPLAIN.get(name, ("", ""))
+                yield {"type": "tool_call", "tool": name, "arguments": args,
+                       "explain": t(f"Python runs tools.py → {name}(): {what[0]}.", f"O Python executa tools.py → {name}(): {what[1]}.")}
                 try:
-                    result = TOOLS[call.function.name](**args)
+                    result = TOOLS[name](**args)
                 except Exception as e:  # a tool error becomes a result instead of crashing the conversation
                     result = {"error": str(e)}
-                yield {"type": "tool_result", "tool": call.function.name, "result": result,
-                       "explain": f"Result: {summarize(call.function.name, result)}. Sent back to the model."}
-                if call.function.name == "create_order" and "order_id" in result:
+                yield {"type": "tool_result", "tool": name, "result": result,
+                       "explain": t(f"Result: {summarize(name, result, t)}. Sent back to the model.",
+                                    f"Resultado: {summarize(name, result, t)}. Devolvido ao modelo.")}
+                if name == "create_order" and "order_id" in result:
                     yield {"type": "order", "order": result}
                 self.history.append({"role": "tool", "tool_call_id": call.id,
                                      "content": json.dumps(result, ensure_ascii=False)})
-        yield {"type": "answer", "text": "Desculpe, me enrolei aqui. Pode reformular a pergunta?"}
+        yield {"type": "answer", "text": t("Sorry, I got tangled up. Could you rephrase?",
+                                           "Desculpe, me enrolei aqui. Pode reformular a pergunta?")}

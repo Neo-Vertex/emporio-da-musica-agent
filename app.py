@@ -23,6 +23,7 @@ sessions: OrderedDict[str, dict] = OrderedDict()
 class ChatIn(BaseModel):
     session_id: str
     message: str
+    lang: str = "en"  # "en" or "pt": reply language and language of the step explanations
 
 
 def check(password):
@@ -58,15 +59,18 @@ def chat(body: ChatIn, x_password: str = Header(None)):
     session = sessions[body.session_id]
 
     def events():
+        en = body.lang == "en"
         if session["turns"] >= MAX_TURNS or len(body.message) > MAX_CHARS:
-            yield {"type": "answer", "text": "Esta conversa atingiu o limite da demonstração. Clique em reset para recomeçar."}
+            yield {"type": "answer", "text": "This conversation reached the demo limit. Click Reset to start over." if en else
+                                             "Esta conversa atingiu o limite da demonstração. Clique em Reset para recomeçar."}
             return
         session["turns"] += 1
         try:
-            yield from session["agent"].stream(body.message.strip())
+            yield from session["agent"].stream(body.message.strip(), "en" if en else "pt")
         except Exception as e:  # e.g. OpenAI unavailable: tell the user instead of breaking the stream
             yield {"type": "error", "explain": f"Error calling the model: {e}"}
-            yield {"type": "answer", "text": "Tive um problema técnico agora. Pode tentar de novo em instantes?"}
+            yield {"type": "answer", "text": "I had a technical problem. Please try again in a moment." if en else
+                                             "Tive um problema técnico agora. Pode tentar de novo em instantes?"}
 
     return StreamingResponse((json.dumps(e, ensure_ascii=False) + "\n" for e in events()),
                              media_type="application/x-ndjson")
