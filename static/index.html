@@ -60,6 +60,12 @@
   .legend i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); display: inline-block; }
   .card ul { margin: 0 0 18px; padding-left: 18px; color: var(--ink); font-size: 14px; }
   .card .hint { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+  .langs { display: inline-flex; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,.4); }
+  .langs button { border: 0; background: transparent; color: #fff; padding: 5px 10px; font-size: 13px; }
+  .langs button.on { background: var(--amber); color: #1d2433; font-weight: 700; }
+  .card .langs { float: right; border-color: var(--line); }
+  .card .langs button { color: var(--navy); background: transparent; width: auto; margin: 0; border-radius: 0; padding: 4px 10px; }
+  .card .langs button.on { background: var(--navy); color: #fff; }
 
   /* neuron panel */
   #brain { flex: 1; overflow-y: auto; padding: 12px 16px; }
@@ -105,17 +111,18 @@
 
 <div id="login">
   <form class="card" id="loginForm">
+    <div class="langs" role="group" aria-label="Language"><button type="button" data-lang="en">EN</button><button type="button" data-lang="pt">PT</button></div>
     <h1>Lia · Empório da Música</h1>
-    <p>AI customer service agent — Artefact AI Engineer case, by Nelson Araujo.</p>
+    <p data-i18n="subtitle"></p>
     <ul>
-      <li>Chat with Lia, the store's assistant (customers write in Portuguese).</li>
-      <li>See, step by step, what the code does to answer.</li>
-      <li>Place an order and watch it land in the CRM.</li>
+      <li data-i18n="li1"></li>
+      <li data-i18n="li2"></li>
+      <li data-i18n="li3"></li>
     </ul>
-    <input id="pwd" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password" required>
-    <button type="submit">Enter</button>
+    <input id="pwd" type="password" data-i18n-ph="password" autocomplete="current-password" aria-label="Password" required>
+    <button type="submit" data-i18n="enter"></button>
     <div class="err" id="loginErr" role="alert"></div>
-    <p class="hint">The password is in the project README.</p>
+    <p class="hint" data-i18n="hint"></p>
   </form>
 </div>
 
@@ -124,38 +131,39 @@
     <strong>Lia · Empório da Música</strong>
     <span class="tag">gpt-5.4-mini · function calling</span>
     <span class="spacer"></span>
-    <button id="reset" title="Start a new conversation">Reset</button>
+    <div class="langs" role="group" aria-label="Language"><button type="button" data-lang="en">EN</button><button type="button" data-lang="pt">PT</button></div>
+    <button id="reset" data-i18n="reset"></button>
   </header>
   <div class="howto">
-    <div class="step"><span class="num">1</span><span><b>Ask</b> something in Portuguese, or click an example below the chat.</span></div>
-    <div class="step"><span class="num">2</span><span><b>Watch the agent brain</b>: each step lights up as the code runs.</span></div>
-    <div class="step"><span class="num">3</span><span><b>Try buying</b>: Lia quotes, asks you to confirm, and the order appears in the CRM.</span></div>
+    <div class="step"><span class="num">1</span><span data-i18n-html="step1"></span></div>
+    <div class="step"><span class="num">2</span><span data-i18n-html="step2"></span></div>
+    <div class="step"><span class="num">3</span><span data-i18n-html="step3"></span></div>
   </div>
   <main>
     <section id="chat">
-      <h2>Chat (customers talk in Portuguese)</h2>
+      <h2 data-i18n="chatTitle"></h2>
       <div id="messages" aria-live="polite"></div>
       <div id="chips"></div>
       <form id="chatForm">
-        <input id="input" placeholder="Digite sua mensagem…" autocomplete="off" aria-label="Message" maxlength="1000">
-        <button id="send">Send</button>
+        <input id="input" data-i18n-ph="placeholder" autocomplete="off" aria-label="Message" maxlength="1000">
+        <button id="send" data-i18n="send"></button>
       </form>
     </section>
     <div class="side">
       <section>
-        <h2>Agent brain · what the code is doing</h2>
+        <h2 data-i18n="brainTitle"></h2>
         <div class="legend">
-          <span class="t-llm_call"><i></i>model call</span>
-          <span class="t-decision"><i></i>model decision</span>
-          <span class="t-tool_call"><i></i>Python tool runs</span>
-          <span class="t-tool_result"><i></i>tool result</span>
-          <span class="t-answer"><i></i>answer</span>
+          <span class="t-llm_call"><i></i><span data-i18n="lgCall"></span></span>
+          <span class="t-decision"><i></i><span data-i18n="lgDecision"></span></span>
+          <span class="t-tool_call"><i></i><span data-i18n="lgTool"></span></span>
+          <span class="t-tool_result"><i></i><span data-i18n="lgResult"></span></span>
+          <span class="t-answer"><i></i><span data-i18n="lgAnswer"></span></span>
         </div>
-        <div id="brain"><p class="empty">Send a message to watch each step: model calls, tool choices, Python results and the final answer.</p></div>
+        <div id="brain"><p class="empty" data-i18n="brainEmpty"></p></div>
       </section>
       <section>
-        <h2>CRM · orders created in this demo</h2>
-        <div id="crm"><p class="empty" style="padding:12px 16px;margin:0">No orders yet. Try: “Quero comprar o Yamaha C40”.</p></div>
+        <h2 data-i18n="crmTitle"></h2>
+        <div id="crm"><p class="empty" style="padding:12px 16px;margin:0" data-i18n="crmEmpty"></p></div>
       </section>
     </div>
   </main>
@@ -170,6 +178,77 @@ const store = {
 let password = store.get("pwd");
 let sessionId = store.get("sid") || newId();
 let busy = false;
+
+// ---------- language (EN / PT): page texts, Lia's reply language and the brain explanations ----------
+const I18N = {
+  en: {
+    subtitle: "AI customer service agent — Artefact AI Engineer case, by Nelson Araujo.",
+    li1: "Chat with Lia, the store's assistant.", li2: "See, step by step, what the code does to answer.",
+    li3: "Place an order and watch it land in the CRM.", password: "Password", enter: "Enter",
+    hint: "The password is in the project README.", wrong: "Wrong password.", reset: "Reset",
+    step1: "<b>Ask</b> something, or click an example below the chat.",
+    step2: "<b>Watch the agent brain</b>: each step lights up as the code runs.",
+    step3: "<b>Try buying</b>: Lia quotes, asks you to confirm, and the order appears in the CRM.",
+    chatTitle: "Chat", placeholder: "Type your message…", send: "Send",
+    brainTitle: "Agent brain · what the code is doing", lgCall: "model call", lgDecision: "model decision",
+    lgTool: "Python tool runs", lgResult: "tool result", lgAnswer: "answer",
+    brainEmpty: "Send a message to watch each step: model calls, tool choices, Python results and the final answer.",
+    crmTitle: "CRM · orders created in this demo", crmEmpty: "No orders yet. Try: “I want to buy the Yamaha C40”.",
+    greet: "Hi! I'm Lia, from Empório da Música 🎸 I can help with prices, stock, orders or questions about the store.",
+    typing: "Lia is thinking…", fail: "Connection failed. Please try again.",
+    reply: "Lia's reply is shown in the chat.", raw: "raw JSON returned to the model",
+    crmHead: ["Order", "Customer", "Items", "Payment", "Total"],
+    labels: { received: "Message received", llm_call: "Calling the model", decision: "Model decision",
+              tool_call: "Running a tool", tool_result: "Tool result", order: "Order saved to CRM",
+              answer: "Answer sent", error: "Error" },
+    examples: ["How much is the Takamine GD20?", "Which acoustic guitars under R$1000?", "What's the store address?",
+               "I want to buy the Yamaha C40", "Status of order 8, email anacarol.ferreira@coldmail.com",
+               "Do you sell P10 cables?"],
+  },
+  pt: {
+    subtitle: "Agente de atendimento com IA — case AI Engineer da Artefact, por Nelson Araujo.",
+    li1: "Converse com a Lia, a assistente da loja.", li2: "Veja, passo a passo, o que o código faz para responder.",
+    li3: "Faça um pedido e veja ele chegar no CRM.", password: "Senha", enter: "Entrar",
+    hint: "A senha está no README do projeto.", wrong: "Senha incorreta.", reset: "Reiniciar",
+    step1: "<b>Pergunte</b> algo, ou clique num exemplo abaixo do chat.",
+    step2: "<b>Acompanhe o cérebro do agente</b>: cada passo acende enquanto o código roda.",
+    step3: "<b>Teste uma compra</b>: a Lia orça, pede confirmação e o pedido aparece no CRM.",
+    chatTitle: "Chat", placeholder: "Digite sua mensagem…", send: "Enviar",
+    brainTitle: "Cérebro do agente · o que o código está fazendo", lgCall: "chamada ao modelo",
+    lgDecision: "decisão do modelo", lgTool: "ferramenta Python", lgResult: "resultado", lgAnswer: "resposta",
+    brainEmpty: "Mande uma mensagem para ver cada passo: chamadas ao modelo, escolha de ferramentas, resultados do Python e a resposta final.",
+    crmTitle: "CRM · pedidos criados nesta demonstração", crmEmpty: "Nenhum pedido ainda. Tente: “Quero comprar o Yamaha C40”.",
+    greet: "Oi! Eu sou a Lia, da Empório da Música 🎸 Posso te ajudar com preços, estoque, pedidos ou dúvidas sobre a loja.",
+    typing: "Lia está pensando…", fail: "Falha de conexão. Tente de novo.",
+    reply: "A resposta da Lia aparece no chat.", raw: "JSON bruto devolvido ao modelo",
+    crmHead: ["Pedido", "Cliente", "Itens", "Pagamento", "Total"],
+    labels: { received: "Mensagem recebida", llm_call: "Chamando o modelo", decision: "Decisão do modelo",
+              tool_call: "Executando ferramenta", tool_result: "Resultado da ferramenta", order: "Pedido gravado no CRM",
+              answer: "Resposta enviada", error: "Erro" },
+    examples: ["Quanto custa o Takamine GD20?", "Quais violões até R$1000?", "Qual o endereço da loja?",
+               "Quero comprar o Yamaha C40", "Status do pedido 8, e-mail anacarol.ferreira@coldmail.com",
+               "Vocês vendem cabo P10?"],
+  },
+};
+let lang = (() => { try { return localStorage.getItem("lang") || "en"; } catch { return "en"; } })();
+const T = () => I18N[lang];
+
+function applyLang(newLang) {
+  lang = newLang;
+  try { localStorage.setItem("lang", lang); } catch {}
+  document.documentElement.lang = lang === "en" ? "en" : "pt-BR";
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = T()[el.dataset.i18n]; });
+  document.querySelectorAll("[data-i18n-html]").forEach((el) => { el.innerHTML = T()[el.dataset.i18nHtml]; });
+  document.querySelectorAll("[data-i18n-ph]").forEach((el) => { el.placeholder = T()[el.dataset.i18nPh]; });
+  document.querySelectorAll("[data-lang]").forEach((b) => b.classList.toggle("on", b.dataset.lang === lang));
+  $("chips").innerHTML = "";
+  T().examples.forEach((t) => { const b = document.createElement("button"); b.textContent = t; b.onclick = () => send(t); $("chips").append(b); });
+  const head = $("crm").querySelector("thead tr");
+  if (head) head.innerHTML = T().crmHead.map((h) => `<th>${h}</th>`).join("");
+  const msgs = $("messages").children;  // only the greeting so far: show it in the new language
+  if (msgs.length === 1 && msgs[0].dataset.greet) msgs[0].textContent = T().greet;
+}
+document.querySelectorAll("[data-lang]").forEach((b) => { b.onclick = () => applyLang(b.dataset.lang); });
 
 function newId() { const id = crypto.randomUUID(); store.set("sid", id); return id; }
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -195,7 +274,7 @@ async function api(path, body) {
 async function enter(pwd) {
   password = pwd;
   const r = await api("/api/login");
-  if (!r.ok) { $("loginErr").textContent = "Wrong password."; return; }
+  if (!r.ok) { $("loginErr").textContent = T().wrong; return; }
   store.set("pwd", pwd);
   $("login").style.display = "none";
   $("app").style.display = "flex";
@@ -203,21 +282,17 @@ async function enter(pwd) {
   $("input").focus();
 }
 $("loginForm").onsubmit = (e) => { e.preventDefault(); enter($("pwd").value); };
+applyLang(lang);
 if (password) enter(password);
 
 // ---------- chat ----------
-const EXAMPLES = ["Quanto custa o Takamine GD20?", "Quais violões até R$1000?", "Qual o endereço da loja?",
-                  "Quero comprar o Yamaha C40", "Status do pedido 8, e-mail anacarol.ferreira@coldmail.com",
-                  "Vocês vendem cabo P10?"];
-EXAMPLES.forEach((t) => { const b = document.createElement("button"); b.textContent = t; b.onclick = () => send(t); $("chips").append(b); });
-
 function addMsg(who, html) {
   const d = document.createElement("div");
   d.className = "msg " + who; d.innerHTML = html;
   $("messages").append(d); $("messages").scrollTop = 1e9;
   return d;
 }
-function greet() { addMsg("bot", "Oi! Eu sou a Lia, da Empório da Música 🎸 Posso te ajudar com preços, estoque, pedidos ou dúvidas sobre a loja."); }
+function greet() { addMsg("bot", esc(T().greet)).dataset.greet = "1"; }
 
 $("chatForm").onsubmit = (e) => { e.preventDefault(); send($("input").value); };
 $("reset").onclick = async () => {
@@ -227,9 +302,6 @@ $("reset").onclick = async () => {
 };
 
 // ---------- neuron panel ----------
-const LABELS = { received: "Message received", llm_call: "Calling the model", decision: "Model decision",
-                 tool_call: "Running a tool", tool_result: "Tool result", order: "Order saved to CRM",
-                 answer: "Answer sent", error: "Error" };
 let turnBox = null;
 function startTurn(text) {
   if ($("brain").querySelector(".empty")) $("brain").innerHTML = "";
@@ -244,10 +316,10 @@ function addNode(ev) {
   n.className = `node t-${ev.type} ${ev.type === "answer" ? "" : "active"}`;
   let body = ev.explain ? esc(ev.explain) : "";
   if (ev.type === "tool_call") body = `<code>${esc(ev.tool)}(${esc(JSON.stringify(ev.arguments))})</code><br>` + body;
-  if (ev.type === "tool_result") body += `<details><summary>raw JSON returned to the model</summary><pre>${esc(JSON.stringify(ev.result, null, 2))}</pre></details>`;
-  if (ev.type === "answer") body = "Lia's reply is shown in the chat.";
+  if (ev.type === "tool_result") body += `<details><summary>${T().raw}</summary><pre>${esc(JSON.stringify(ev.result, null, 2))}</pre></details>`;
+  if (ev.type === "answer") body = T().reply;
   if (ev.type === "order") body = `${esc(ev.order.order_id)} · R$ ${ev.order.total.toFixed(2)} · ${esc(ev.order.payment.method)}`;
-  n.innerHTML = `<span class="dot"></span><div class="label">${LABELS[ev.type] || ev.type}</div><div class="text">${body}</div>`;
+  n.innerHTML = `<span class="dot"></span><div class="label">${T().labels[ev.type] || ev.type}</div><div class="text">${body}</div>`;
   turnBox.append(n);
   $("brain").scrollTop = 1e9;
 }
@@ -255,7 +327,7 @@ function addNode(ev) {
 // ---------- CRM ----------
 function addOrder(o) {
   if (!$("crm").querySelector("table")) $("crm").innerHTML =
-    "<table><thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Payment</th><th>Total</th></tr></thead><tbody></tbody></table>";
+    `<table><thead><tr>${T().crmHead.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody></tbody></table>`;
   const items = o.items.map((i) => `${i.quantity}× ${esc(i.product)}`).join("<br>");
   const pay = o.payment.method + (o.payment.installments > 1 ? ` ${o.payment.installments}x` : "");
   const tr = document.createElement("tr");
@@ -270,10 +342,10 @@ async function send(text) {
   if (!text || busy) return;
   busy = true; $("send").disabled = true; $("input").value = "";
   addMsg("user", esc(text));
-  const typing = addMsg("bot typing", "Lia está pensando…");
+  const typing = addMsg("bot typing", T().typing);
   startTurn(text);
   try {
-    const r = await api("/api/chat", { session_id: sessionId, message: text });
+    const r = await api("/api/chat", { session_id: sessionId, message: text, lang });
     if (r.status === 401) { location.reload(); return; }
     const reader = r.body.getReader(), dec = new TextDecoder();
     let buf = "";
@@ -290,7 +362,7 @@ async function send(text) {
       }
     }
   } catch (e) {
-    typing.remove(); addMsg("bot", "Falha de conexão. Tente de novo.");
+    typing.remove(); addMsg("bot", T().fail);
   } finally {
     busy = false; $("send").disabled = false; $("input").focus();
   }
