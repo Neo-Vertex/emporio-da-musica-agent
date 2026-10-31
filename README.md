@@ -1,8 +1,8 @@
 # Empório da Música — Customer Service Agent
 
-A Python text agent ("Lia") that answers customers of Empório da Música, a fictional musical instrument store in Campo Grande/MS. It looks up **data** (products, prices, stock, promotions, orders) through tools and answers **policy** questions (hours, payment, returns, shipping) from the store manual.
+A Python text agent ("Lia") that answers customers of Empório da Música, a fictional musical instrument store in Campo Grande/MS. It looks up data (products, prices, stock, promotions, orders) through tools and answers policy questions (hours, payment, returns, shipping) from the store manual.
 
-Author: **Nelson Araujo**
+Author: Nelson Araujo
 
 **Live demo:** https://artefact-desafio-tecnico.neovertex.top — password **`artefact`** (optional: everything also runs locally, see below).
 
@@ -28,7 +28,7 @@ cp .env.example .env            # then put your key in OPENAI_API_KEY
 | `python evals.py` | Automated evaluation: 15 scenarios against the real model (~2 min) |
 | `uvicorn app:app --port 8000` | Optional web page at http://localhost:8000 — **password: `artefact`** |
 
-**Web page (optional).** Made so the evaluator can test without a terminal. Besides the chat, it has an **"agent brain" panel** that shows, live, each step of the code: the call to the model (with token count and how much came from the prompt cache), the tool the model chose and its arguments, the Python result sent back, and whether the answer came from data or from the manual. A **CRM** list shows orders created during the demo. An **EN/PT** toggle switches the page, Lia's replies and the step explanations (English by default; the store's real customers would use Portuguese). The password can be changed with `CHAT_PASSWORD` in `.env`.
+**Web page (optional).** Made so the evaluator can test without a terminal. Besides the chat, it has an "agent brain" panel that shows, live, each step of the code: the call to the model (with token count and how much came from the prompt cache), the tool the model chose and its arguments, the Python result sent back, and whether the answer came from data or from the manual. A CRM list shows orders created during the demo. An EN/PT toggle switches the page, Lia's replies and the step explanations (English by default; the store's real customers would use Portuguese). The password can be changed with `CHAT_PASSWORD` in `.env`.
 
 The model is set in `.env` (`OPENAI_MODEL`, default `gpt-5.4-mini`).
 
@@ -46,7 +46,7 @@ customer message
 |---|---|
 | `search_products` | Catalog search by text, category, price range or promotion. Returns list price, promo price, PIX price and installments already calculated; for an unavailable item, returns 3 available alternatives. |
 | `simulate_installments` | Max interest-free installments for an amount (manual §3.1). |
-| `get_order_status` | Status, items, tracking, days late / days since delivery. Requires order number **and** the customer's email or phone. |
+| `get_order_status` | Status, items, tracking, days late / days since delivery. Requires order number and the customer's email or phone. |
 | `create_order` | Places a delivery order: validates stock, computes prices, PIX/promotion, shipping (free in Campo Grande from R$500, else R$35; other cities quoted by the team) and installment limits. Called first as a quote; only saved to the simulated CRM (`logs/orders_crm.jsonl`) after the customer explicitly confirms. |
 | `handoff_to_human` | Hands the case to the team (complaints, late orders, returns to formalize). Writes to `logs/handoffs.jsonl`. |
 
@@ -95,30 +95,59 @@ examples/           5 example conversations
 - **Current date:** the agent uses the real date (Campo Grande, UTC-4). Since the orders are from early 2026, open orders show up as late and the agent apologizes and hands them off.
 - **Partner stores:** the manual mentions suggesting partners but lists none, so the agent does not invent names.
 
-**Data issues found and how the agent handles them.** The CSVs are the store's source of truth, so they were not edited; the agent handles each case safely and the issues are reported here so the store can fix them at the source.
+### Data issues found
 
-| Issue in the data | How the agent handles it |
-|---|---|
-| 21 of 25 promotions are inactive | Only the 4 active ones are used, so Lia never offers an expired discount (manual §7.3). |
-| Product 136 is discontinued but has 13 units in stock | Status wins over stock: Lia says it is discontinued and `create_order` refuses to sell it. |
-| Product 130 is "coming soon" but was sold before (order 3, delivered) and has a pending order (14) | Read as a **restock**, not a launch: it cannot be bought right now, Lia says it is expected back soon and offers alternatives. This also explains the pending order (waiting for the item). Past orders are shown normally. |
-| Totals of orders 3 (R$3,450 vs R$3,498) and 20 (R$1,400 vs R$1,488) differ from the sum of their items at today's prices | Lia reports the total recorded in the order and never recalculates it. An order keeps the price of the day it was placed, while the catalog has today's price, so the difference is most likely a later price change (or an unrecorded discount). Order 20 was also cancelled. |
-| 3 categories have no products (woodwinds, brass, orchestral strings), although the manual says the store sells them | The search returns nothing and Lia says there are no options right now, without inventing products or denying that the store works with them. |
-| Some products have more than one promotion record | Only active ones count, and today no product has two. If one ever does, the code keeps the biggest discount (promotions do not stack, manual §6.2). |
+The CSVs are the store's source of truth, so they were not edited. The agent handles each case safely, and the issues are listed here so the store can fix them at the source.
+
+**1. Inactive promotions** — 21 of 25 promotions are inactive.
+- **Lia:** uses only the 4 active ones.
+- **Why:** never promise an expired discount (manual §7.3).
+
+**2. Discontinued product with stock** — product 136 is discontinued but has 13 units.
+- **Lia:** says it is discontinued; `create_order` refuses to sell it.
+- **Why:** the manual treats discontinued items as out of the catalog. Selling the last units would be a clearance decision for the store.
+
+**3. "Coming soon" product that was already sold** — product 130 was delivered in order 3 and has a pending order (14).
+- **Lia:** says it is unavailable right now and expected back soon, and offers alternatives.
+- **Why:** it is most likely a restock, not a launch, which also explains the pending order.
+
+**4. Order totals that differ from the sum of the items** — order 3: R$3,450 vs R$3,498; order 20: R$1,400 vs R$1,488.
+- **Lia:** reports the total recorded in the order and never recalculates it.
+- **Why:** an order keeps the price of the day it was placed, while the catalog has today's price. The difference is most likely a later price change (or an unrecorded discount). Order 20 was also cancelled.
+
+**5. Empty categories** — woodwinds, brass and orchestral strings have no products, although the manual says the store sells them.
+- **Lia:** *"Apesar de trabalharmos com saxofone, no momento estamos sem nenhum no catálogo. Posso chamar um atendente para ver se tem algum chegando?"*
+- **Why:** do not invent products, and do not deny that the store works with them.
+
+**6. Products with more than one promotion record**
+- **Lia:** only active promotions count, and today no product has two.
+- **Why:** if one ever does, the code keeps the biggest discount, since promotions do not stack (manual §6.2).
 
 ## Testing
 
 - `python -m emporio.tools` checks the deterministic rules (installments, PIX not stacking, alternatives for out-of-stock items, identity check, order quote vs. confirmation, shipping).
-- `python evals.py` runs 15 scenarios against the real model and checks behavior, not exact wording: which tools were called and what the answer must or must not contain (prices, refusals, no data leaks, the purchase flow asking for confirmation). Results vary between **14/15 and 15/15** across runs, because the model is not fully deterministic (e.g. once it asked to confirm the quantity before quoting, which is reasonable, so that check was relaxed to what matters: never placing an order without confirmation). On its first run it caught a real bug: the agent **solved a math homework question** (23 × 47) despite the scope rule; the prompt was tightened and the case now passes. It also showed that checks must be flexible ("não abrimos" is as valid as "fechado").
+- `python evals.py` runs 15 scenarios against the real model and checks behavior, not exact wording: which tools were called and what the answer must or must not contain (prices, refusals, no data leaks, the purchase flow asking for confirmation). Results vary between 14/15 and 15/15 across runs, because the model is not fully deterministic (e.g. once it asked to confirm the quantity before quoting, which is reasonable, so that check was relaxed to what matters: never placing an order without confirmation). On its first run it caught a real bug: the agent solved a math homework question (23 × 47) despite the scope rule; the prompt was tightened and the case now passes. It also showed that checks must be flexible ("não abrimos" is as valid as "fechado").
 - I generated the conversations in `examples/` with the real agent and reviewed each one. What the review found, and the fix:
 
-| Finding | Fix |
-|---|---|
-| Wrong installment count (12x instead of 6x) | New `simulate_installments` tool |
-| Promotion shown without the discount % | Format rule with example in the prompt |
-| No alternatives for out-of-stock items (prompt alone did not fix it) | `search_products` returns `available_alternatives` |
-| Confusing phrasing ("tem, mas está esgotado") | Wording rules in the prompt |
-| Order lookup called with an empty email | Guard inside the tool |
+**1. Installments** *(fixed in code)*
+- **Before:** said R$600 fits in 12x interest-free; the correct answer is 6x.
+- **After:** the new `simulate_installments` tool does the math.
+
+**2. Promotion format** *(fixed in the prompt)*
+- **Before:** showed a promotion without the discount percentage.
+- **After:** a format rule with an example always shows original price, % and final price.
+
+**3. Out-of-stock item** *(fixed in code, after a prompt rule failed)*
+- **Before:** Lia only *offered* to suggest alternatives.
+- **After:** `search_products` returns 3 `available_alternatives` and Lia shows them right away.
+
+**4. Confusing phrasing** *(fixed in the prompt)*
+- **Before:** "tem, mas está esgotado" (we have it, but it is out of stock).
+- **After:** wording rules: say clearly that we do not have it right now.
+
+**5. Order lookup without identity** *(fixed in code)*
+- **Before:** the agent called the order tool with an empty email.
+- **After:** the tool refuses and asks for the email or phone first.
 
 **Iteration example (out-of-stock item).** The manual (§7.3) says to suggest similar available products when an item is out of stock.
 1. *Test:* asked for the Giannini GF-3D (0 units). Lia said it was out of stock and only *offered* to suggest alternatives.
@@ -126,7 +155,7 @@ examples/           5 example conversations
 3. *Code fix:* `search_products` now returns `available_alternatives` (same category, closest price, in stock) whenever the requested item is unavailable, and the prompt only tells Lia to present them.
 4. *Validation:* an assertion in the self-check (`python -m emporio.tools`) guarantees 3 alternatives for this case, and the regenerated conversation (`examples/05_out_of_scope.md`) shows them in the answer.
 
-Lesson: exact rules belong in code; tone and wording belong in the prompt.
+What I took from this: if a rule must be exact, put it in code; the prompt handles tone and wording.
 
 ## Known limitations and next steps
 
@@ -141,14 +170,12 @@ Lesson: exact rules belong in code; tone and wording belong in the prompt.
 
 ## Use of AI coding assistants
 
-I built this project with the help of **Claude (Anthropic)**, used throughout the work to orchestrate the project, generate the code from my specifications, align the business rules with the tests, and catch errors that could otherwise go unnoticed. My workflow:
+I built this project with the help of Claude (Anthropic), used throughout the work to orchestrate the project, generate the code from my specifications, align the business rules with the tests, and catch errors that could otherwise go unnoticed. My workflow:
 
 1. **Understand.** I read the case brief and the store manual, then went through them with the assistant to make sure my interpretation had no mistakes, including each inconsistency in the manual and the data (see *Assumptions*).
 2. **Plan.** I listed the requirements and set priorities: mandatory deliverables first. I chose OpenAI as the provider and decided not to build a live WhatsApp integration, since an evaluator would likely not test it.
-3. **Build in steps.** The assistant generated the code from my specifications, one step at a time, each step in its own commit. I required an explanation of every decision (architecture, why no RAG, why rules in code) before moving on.
+3. **Build in steps.** The assistant generated the code from my specifications, one step at a time, each step in its own commit. I defined the architecture together with the assistant and made the final calls: no RAG, since the manual fits in the prompt, and a small set of closed tools for what the agent needs (catalog, installments, orders, purchase, human handoff), with business rules in code. I followed each step as the code and each tool were created and validated whether the reasoning made sense before moving on. When it did not, I questioned it and the approach changed (for example, treating the "coming soon" product as a restock, or the wording for empty categories).
 4. **Verify.** The test conversations were reviewed one by one, and that review found errors such as the wrong installment count; each one was fixed and re-tested. I then decided to add an automated eval, which caught a real bug on its first run (the agent answering a math question).
 5. **Think about the evaluator.** I added the web page so the agent can be tested without a terminal (the CLI is still there for whoever prefers it), the EN/PT toggle, and the live demo.
 
 **A note on the commit history.** Commits 1–9 are the original first version, with messages in Portuguese, and I apologize for that: I had missed that HR's email asked for everything in English. When I noticed, commit 10 rebuilt the whole project in English (code, comments, prompt, examples). That first version is also where the early test fixes appear, for example the installment tool added in commit 6, after the agent and the CLI were already working. From commit 10 on, everything is in English and each change appears in the history when it happened.
-
-This let me deliver a working, tested agent while focusing on the decisions, which is the part I can explain and defend.
