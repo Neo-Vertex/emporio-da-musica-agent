@@ -95,7 +95,16 @@ examples/           5 example conversations
 - **Current date:** the agent uses the real date (Campo Grande, UTC-4). Since the orders are from early 2026, open orders show up as late and the agent apologizes and hands them off.
 - **Partner stores:** the manual mentions suggesting partners but lists none, so the agent does not invent names.
 
-**Data issues found (documented, not silently fixed):** 21 of 25 promotions are inactive; product 136 is discontinued but still has 13 units in stock; product 130 is "coming soon" but appears in past orders; order totals differ from the sum of their items in orders 3 (R$3,450 vs R$3,498) and 20 (R$1,400 vs R$1,488), probably discounts not recorded in the data; 4 categories have no products; some products have more than one promotion record.
+**Data issues found and how the agent handles them.** The CSVs are the store's source of truth, so they were not edited; the agent handles each case safely and the issues are reported here so the store can fix them at the source.
+
+| Issue in the data | How the agent handles it |
+|---|---|
+| 21 of 25 promotions are inactive | Only the 4 active ones are used, so Lia never offers an expired discount (manual §7.3). |
+| Product 136 is discontinued but has 13 units in stock | Status wins over stock: Lia says it is discontinued and `create_order` refuses to sell it. |
+| Product 130 is "coming soon" but appears in past orders | Not offered for sale ("not on sale yet"); past orders that contain it are still shown normally. |
+| Totals of orders 3 (R$3,450 vs R$3,498) and 20 (R$1,400 vs R$1,488) differ from the sum of their items | Lia reports the recorded total (what the customer paid) and never recalculates it; likely a discount missing from the data. |
+| 4 categories have no products (e.g. wind instruments) | The search returns nothing and Lia says there are no options right now, without inventing products. |
+| Some products have more than one promotion record | No product has two *active* promotions, and only active ones count, so there is no conflict. |
 
 ## Testing
 
