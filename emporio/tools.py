@@ -34,7 +34,10 @@ PRODUCTS = _load("products")
 CUSTOMERS = {c["customer_id"]: c for c in _load("customers")}
 ORDERS = {o["order_id"]: o for o in _load("orders")}
 ORDER_ITEMS = _load("order_items")
-ACTIVE_PROMOS = {p["product_id"]: p for p in _load("promotions") if p["is_active"] == "1"}
+# Promotions do not stack (manual §6.2): if a product ever has two active ones, keep the biggest discount.
+# Sorting ascending means the biggest is written last and wins (today no product has two active promotions).
+ACTIVE_PROMOS = {p["product_id"]: p for p in sorted(_load("promotions"), key=lambda p: int(p["discount_percent"]))
+                 if p["is_active"] == "1"}
 PRODUCT_BY_ID = {p["product_id"]: p for p in PRODUCTS}
 
 # "coming_soon" is read as "temporarily unavailable, expected soon": product 130 was sold normally before
@@ -317,6 +320,7 @@ if __name__ == "__main__":  # self-check: python -m emporio.tools
     crafter = search_products("crafter ht-100")["products"][0]  # active 18% promotion: PIX does not stack
     assert crafter["active_promotion"]["promo_price"] == crafter["pix_price"] == 1967.18
     assert len(search_products("Giannini GF-3D")["available_alternatives"]) == 3  # out of stock -> 3 suggestions
+    assert sorted(ACTIVE_PROMOS) == ["121", "127", "90", "94"]  # only the 4 active promotions, one per product
     guitars = search_products(category="Violões", max_price=1000)["products"]
     assert guitars and all(g["list_price"] <= 1000 for g in guitars)
     addr = dict(customer_name="Teste", phone="67999999999", street="Rua A", number="1", district="Centro", cep="79000-000")
