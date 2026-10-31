@@ -80,6 +80,34 @@ def now_message():
     return {"role": "system", "content": f"Current time in Campo Grande: {now:%Y-%m-%d %H:%M} ({WEEKDAYS[now.weekday()]})."}
 
 
+# Plain-language description of what each tool does in code (shown in the web "neuron" panel)
+TOOL_EXPLAIN = {
+    "search_products": "filters products.csv (accent/case-insensitive), applies the active promotion and computes the "
+                       "PIX price and max installments in code",
+    "simulate_installments": "tries 12x down to 1x and returns the first count that respects the manual's minimum installment",
+    "get_order_status": "checks order number + email/phone against customers.csv before returning anything (LGPD)",
+    "create_order": "validates stock and computes prices, discounts, shipping and installments; confirmed=false only "
+                    "quotes, confirmed=true saves to the CRM (logs/orders_crm.jsonl)",
+    "handoff_to_human": "writes a ticket to logs/handoffs.jsonl for the human team",
+}
+PROMPT_TOKENS = len(SYSTEM_PROMPT) // 4  # rough estimate: ~4 characters per token
+
+
+def summarize(tool, result):
+    if "error" in result:
+        return f"returned an error: {result['error']}"
+    if tool == "search_products":
+        alt = f", plus {len(result['available_alternatives'])} available alternatives" if "available_alternatives" in result else ""
+        return f"{result['total_found']} product(s) found{alt}"
+    if tool == "simulate_installments":
+        return f"up to {result['max_interest_free_installments']}x of R$ {result['installment_value']:.2f}"
+    if tool == "get_order_status":
+        return f"identity confirmed; order {result['order_id']} is '{result['status']}'"
+    if tool == "create_order":
+        return f"{'ORDER SAVED ' + result['order_id'] if 'order_id' in result else 'quote only (not saved)'}; total R$ {result['total']:.2f}"
+    return "ticket created for the human team"
+
+
 class Agent:
     """One conversation. The history lives in memory while the object exists."""
 
@@ -88,25 +116,55 @@ class Agent:
         self.history = []
 
     def reply(self, user_message):
-        """Returns (answer, tools_called)."""
-        self.history.append({"role": "user", "content": user_message})
+        """Returns (answer, tools_called). Used by the CLI and the evals."""
         called = []
-        for _ in range(MAX_TOOL_ROUNDS):
+        for event in self.stream(user_message):
+            if event["type"] == "tool_call":
+                called.append({"tool": event["tool"], "arguments": event["arguments"]})
+            elif event["type"] == "answer":
+                return event["text"], called
+
+    def stream(self, user_message):
+        """Runs one turn and yields each step as an event, so the web page can show the agent "thinking"."""
+        self.history.append({"role": "user", "content": user_message})
+        yield {"type": "received", "explain": f"Message added to the conversation history ({len(self.history)} "
+                                              f"messages). agent.py → Agent.stream()"}
+        used_tools = False
+        for round_ in range(1, MAX_TOOL_ROUNDS + 1):
+            yield {"type": "llm_call", "explain": f"Call #{round_} to {MODEL}: system prompt (persona + rules + full "
+                                                  f"manual, ~{PROMPT_TOKENS:,} tokens) + current time + "
+                                                  f"{len(self.history)} history messages + {len(SCHEMAS)} tool definitions."}
             response = self.client.chat.completions.create(
                 model=MODEL, tools=SCHEMAS,
                 messages=[{"role": "system", "content": SYSTEM_PROMPT}, now_message()] + self.history,
             )
+            usage = response.usage
+            cached = getattr(usage.prompt_tokens_details, "cached_tokens", 0) or 0
             msg = response.choices[0].message
             self.history.append(msg.model_dump(exclude_none=True))
+            tokens = f"Read {usage.prompt_tokens:,} tokens ({cached:,} from OpenAI's prompt cache), wrote {usage.completion_tokens:,}."
             if not msg.tool_calls:
-                return msg.content, called
+                source = ("It used the tool results above to write the answer." if used_tools else
+                          "No data lookup needed: answered from the store manual that is already in the prompt.")
+                yield {"type": "decision", "explain": f"The model decided to answer. {source} {tokens}"}
+                yield {"type": "answer", "text": msg.content}
+                return
+            names = ", ".join(c.function.name for c in msg.tool_calls)
+            yield {"type": "decision", "explain": f"The model decided it needs data and asked for: {names}. "
+                                                  f"Following the routing rules in the prompt. {tokens}"}
+            used_tools = True
             for call in msg.tool_calls:
                 args = json.loads(call.function.arguments or "{}")
-                called.append({"tool": call.function.name, "arguments": args})
+                yield {"type": "tool_call", "tool": call.function.name, "arguments": args,
+                       "explain": f"Python runs tools.py → {call.function.name}(): {TOOL_EXPLAIN.get(call.function.name, '')}."}
                 try:
                     result = TOOLS[call.function.name](**args)
                 except Exception as e:  # a tool error becomes a result instead of crashing the conversation
                     result = {"error": str(e)}
+                yield {"type": "tool_result", "tool": call.function.name, "result": result,
+                       "explain": f"Result: {summarize(call.function.name, result)}. Sent back to the model."}
+                if call.function.name == "create_order" and "order_id" in result:
+                    yield {"type": "order", "order": result}
                 self.history.append({"role": "tool", "tool_call_id": call.id,
                                      "content": json.dumps(result, ensure_ascii=False)})
-        return "Desculpe, me enrolei aqui. Pode reformular a pergunta?", called
+        yield {"type": "answer", "text": "Desculpe, me enrolei aqui. Pode reformular a pergunta?"}
