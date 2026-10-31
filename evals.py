@@ -50,7 +50,7 @@ CASES = [
     dict(name="purchase asks before confirming",
          msgs=["Quero comprar o Yamaha C40, pago no PIX. Nelson Araujo, 67 99999-0000, Rua 14 de Julho, 500, Centro, "
                "Campo Grande, CEP 79002-000"],
-         tools={"create_order"}, any_of=["confirm"], none_of=["web-0"]),
+         any_of=["confirm"], none_of=["web-0"]),  # may quote first or ask a clarifying question; must not place it
     dict(name="purchase is placed after confirmation",
          msgs=["Quero comprar o Yamaha C40, pago no PIX. Nelson Araujo, 67 99999-0000, Rua 14 de Julho, 500, Centro, "
                "Campo Grande, CEP 79002-000", "Sim, pode confirmar"],
