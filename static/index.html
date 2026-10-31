@@ -265,9 +265,9 @@ function md(text) {
   return (html + (inList ? "</ul>" : "")).replace(/(<br>)+$/, "");
 }
 
-async function api(path, body) {
+async function api(path, body, signal) {
   return fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Password": password || "" },
-                       body: JSON.stringify(body || { session_id: sessionId, message: "" }) });
+                       body: JSON.stringify(body || { session_id: sessionId, message: "" }), signal });
 }
 
 // ---------- login ----------
@@ -295,10 +295,15 @@ function addMsg(who, html) {
 function greet() { addMsg("bot", esc(T().greet)).dataset.greet = "1"; }
 
 $("chatForm").onsubmit = (e) => { e.preventDefault(); send($("input").value); };
+let inflight = null;  // AbortController of the reply being streamed, so Reset can cancel it
 $("reset").onclick = async () => {
+  if (inflight) inflight.abort();
   await api("/api/reset");
   sessionId = newId();
-  $("messages").innerHTML = ""; $("brain").innerHTML = ""; greet();
+  $("messages").innerHTML = "";
+  $("brain").innerHTML = `<p class="empty" data-i18n="brainEmpty">${T().brainEmpty}</p>`;
+  $("crm").innerHTML = `<p class="empty" style="padding:12px 16px;margin:0" data-i18n="crmEmpty">${T().crmEmpty}</p>`;
+  greet();
 };
 
 // ---------- neuron panel ----------
@@ -345,7 +350,8 @@ async function send(text) {
   const typing = addMsg("bot typing", T().typing);
   startTurn(text);
   try {
-    const r = await api("/api/chat", { session_id: sessionId, message: text, lang });
+    inflight = new AbortController();
+    const r = await api("/api/chat", { session_id: sessionId, message: text, lang }, inflight.signal);
     if (r.status === 401) { location.reload(); return; }
     const reader = r.body.getReader(), dec = new TextDecoder();
     let buf = "";
@@ -362,9 +368,10 @@ async function send(text) {
       }
     }
   } catch (e) {
-    typing.remove(); addMsg("bot", T().fail);
+    typing.remove();
+    if (e.name !== "AbortError") addMsg("bot", T().fail);  // aborted by Reset: nothing to show
   } finally {
-    busy = false; $("send").disabled = false; $("input").focus();
+    inflight = null; busy = false; $("send").disabled = false; $("input").focus();
   }
 }
 </script>
