@@ -117,8 +117,10 @@ def search_products(query=None, category=None, min_price=None, max_price=None, p
         # 3 categories (woodwinds, brass, orchestral strings) have no products at all: say so explicitly,
         # otherwise the model offers "similar items in stock" that do not exist
         empty_cat = category and not any(p["category_id"] in cat_ids for p in PRODUCTS)
-        result["note"] = ("This category has no products in the catalog right now. Do not offer alternatives from it; "
-                          "offer to hand off to the team instead." if empty_cat else
+        result["note"] = ("The store works with this category (manual §1) but has no products of it in the catalog right "
+                          "now. Reply like: \"Apesar de trabalharmos com <item>, no momento estamos sem nenhum no catálogo. "
+                          "Posso chamar um atendente para ver se tem algum chegando?\" (in English if the interface is in "
+                          "English). Do not offer alternatives from this category." if empty_cat else
                           "No product matches. Do not invent products; suggest a broader search or hand off to the team.")
     # §7.3: when the requested item is unavailable, return alternatives right away
     # (asking for this only in the prompt was not enough during testing)

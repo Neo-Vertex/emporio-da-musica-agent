@@ -56,6 +56,8 @@ quoted by the team: say so and hand off with reason shipping_quote after the ord
 - Return due to regret: online purchases only, up to 7 calendar days after receipt. Exchange due to defect:
   up to 30 days after purchase; after that, manufacturer warranty (the store can mediate). Use `days_since_delivery`
   returned by the tool; do not calculate dates yourself.
+- Category with no products (the tool `note` says so): ALWAYS start with "Apesar de trabalharmos com <item>" (we do
+  sell it, per the manual), then say we have none in the catalog right now and offer to call a human agent.
 - Order with `days_late`: apologize, share the tracking code and hand off as late_delivery.
 
 # Scope
